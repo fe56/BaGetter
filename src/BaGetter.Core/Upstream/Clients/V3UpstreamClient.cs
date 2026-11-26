@@ -45,6 +45,11 @@ public class V3UpstreamClient : IUpstreamClient
         {
             return null;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller (e.g. the HTTP request) was cancelled. This is not an upstream failure.
+            throw;
+        }
         catch (Exception e)
         {
             _logger.LogError(
@@ -66,6 +71,11 @@ public class V3UpstreamClient : IUpstreamClient
 
             return packages.Select(ToPackage).ToList();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller (e.g. the HTTP request) was cancelled. This is not an upstream failure.
+            throw;
+        }
         catch (Exception e)
         {
             _logger.LogError(e, "Failed to mirror {PackageId}'s upstream metadata", id);
@@ -80,6 +90,11 @@ public class V3UpstreamClient : IUpstreamClient
         try
         {
             return await _client.ListPackageVersionsAsync(id, includeUnlisted: true, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller (e.g. the HTTP request) was cancelled. This is not an upstream failure.
+            throw;
         }
         catch (Exception e)
         {

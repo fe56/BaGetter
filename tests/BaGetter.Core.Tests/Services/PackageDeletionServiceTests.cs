@@ -457,4 +457,33 @@ public class PackageDeletionServiceTests
         Assert.Equal(1, deleted);
         Assert.Equal(new NuGetVersion("2.0.0"), Assert.Single(deletedVersions));
     }
+
+    [Fact]
+    public async Task DeleteOldVersions_ContinuesWhenOneVersionFailsToDelete()
+    {
+        // Arrange
+        var cancellationToken = CancellationToken.None;
+        _packages
+            .Setup(p => p.FindAsync(PackageId, true, cancellationToken))
+            .ReturnsAsync([
+                new Package { Id = PackageId, Version = new NuGetVersion("1.0.0") },
+                new Package { Id = PackageId, Version = new NuGetVersion("2.0.0") },
+                new Package { Id = PackageId, Version = new NuGetVersion("3.0.0") },
+            ]);
+        _packages
+            .Setup(p => p.HardDeletePackageAsync(PackageId, new NuGetVersion("1.0.0"), cancellationToken))
+            .ThrowsAsync(new System.InvalidOperationException("Simulated failure"));
+        _packages
+            .Setup(p => p.HardDeletePackageAsync(PackageId, new NuGetVersion("2.0.0"), cancellationToken))
+            .ReturnsAsync(true);
+
+        // Act
+        var deleted = await _target.DeleteOldVersionsAsync(
+            new Package { Id = PackageId, Version = new NuGetVersion("3.0.0") },
+            maxMajor: 1, maxMinor: null, maxPatch: null, maxPrerelease: null, deletePrereleasesOfOlderMajors: false, cancellationToken);
+
+        // Assert
+        Assert.Equal(1, deleted);
+        _storage.Verify(s => s.DeleteAsync(PackageId, new NuGetVersion("2.0.0"), cancellationToken), Times.Once);
+    }
 }

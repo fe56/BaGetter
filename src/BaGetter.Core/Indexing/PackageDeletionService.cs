@@ -163,7 +163,19 @@ public class PackageDeletionService : IPackageDeletionService
         var deleted = 0;
         foreach (var version in versionsToDelete)
         {
-            if (await TryHardDeletePackageAsync(package.Id, version.Version, cancellationToken)) deleted++;
+            try
+            {
+                if (await TryHardDeletePackageAsync(package.Id, version.Version, cancellationToken)) deleted++;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Keep cleaning up the remaining versions; a failed one will be retried on the next cleanup.
+                _logger.LogError(
+                    e,
+                    "Failed to delete old version {PackageVersion} of package {PackageId}",
+                    version.Version,
+                    package.Id);
+            }
         }
         return deleted;
     }

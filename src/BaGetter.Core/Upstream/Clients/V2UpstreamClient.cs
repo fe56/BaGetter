@@ -79,6 +79,11 @@ public class V2UpstreamClient : IUpstreamClient, IDisposable
 
             return versions.ToList();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller (e.g. the HTTP request) was cancelled. This is not an upstream failure.
+            throw;
+        }
         catch (Exception e)
         {
             _logger.LogError(e, "Failed to mirror {PackageId}'s upstream versions", id);
@@ -102,6 +107,11 @@ public class V2UpstreamClient : IUpstreamClient, IDisposable
                 cancellationToken);
 
             return packages.Select(ToPackage).ToList();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller (e.g. the HTTP request) was cancelled. This is not an upstream failure.
+            throw;
         }
         catch (Exception e)
         {
@@ -133,6 +143,12 @@ public class V2UpstreamClient : IUpstreamClient, IDisposable
             packageStream.Position = 0;
 
             return packageStream;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller (e.g. the HTTP request) was cancelled. This is not an upstream failure.
+            packageStream.Dispose();
+            throw;
         }
         catch (Exception e)
         {

@@ -264,6 +264,49 @@ public class PackageServiceTests
 
             Assert.False(result);
         }
+
+        [Theory]
+        [InlineData(PackageIndexingResult.Success, true)]
+        [InlineData(PackageIndexingResult.PackageAlreadyExists, true)]
+        [InlineData(PackageIndexingResult.InvalidPackage, false)]
+        public async Task ReturnsWhetherMirroredPackageIsAvailable(PackageIndexingResult indexingResult, bool expected)
+        {
+            // PackageAlreadyExists happens when a concurrent request mirrored the same package.
+            _db
+                .Setup(p => p.ExistsAsync(_id, _version, _cancellationToken))
+                .ReturnsAsync(false);
+
+            using var downloadStream = new MemoryStream();
+            _upstream
+                .Setup(u => u.DownloadPackageOrNullAsync(_id, _version, _cancellationToken))
+                .ReturnsAsync(downloadStream);
+
+            _indexer
+                .Setup(i => i.IndexAsync(It.IsAny<Stream>(), It.IsAny<string>(), _cancellationToken))
+                .ReturnsAsync(indexingResult);
+
+            var result = await _target.ExistsAsync(_id, _version, _cancellationToken);
+
+            Assert.Equal(expected, result);
+        }
+
+        [Fact]
+        public async Task RethrowsWhenCallerCancelled()
+        {
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            _db
+                .Setup(p => p.ExistsAsync(_id, _version, cts.Token))
+                .ReturnsAsync(false);
+
+            _upstream
+                .Setup(u => u.DownloadPackageOrNullAsync(_id, _version, cts.Token))
+                .ThrowsAsync(new TaskCanceledException());
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => _target.ExistsAsync(_id, _version, cts.Token));
+        }
     }
 
     public abstract class MirrorAsync : FactsBase

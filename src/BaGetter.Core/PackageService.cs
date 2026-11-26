@@ -133,7 +133,13 @@ public class PackageService : IPackageService
                 version,
                 result);
 
-            return result == PackageIndexingResult.Success;
+            // A concurrent request may have mirrored the same package in the meantime.
+            return result is PackageIndexingResult.Success or PackageIndexingResult.PackageAlreadyExists;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller (e.g. the HTTP request) was cancelled. This is not an upstream failure.
+            throw;
         }
         catch (Exception e)
         {

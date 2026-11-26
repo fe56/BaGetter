@@ -118,7 +118,17 @@ public class PackageDatabase : IPackageDatabase
         }
 
         _context.Packages.Remove(package);
-        await _context.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException e)
+        {
+            // The package was deleted concurrently (e.g. by a parallel retention cleanup).
+            Detach(package, e);
+            return false;
+        }
 
         return true;
     }
@@ -134,14 +144,51 @@ public class PackageDatabase : IPackageDatabase
             .Where(p => p.NormalizedVersionString == version.ToNormalizedString())
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (package != null)
+        if (package == null)
         {
-            action(package);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            return true;
+            return false;
         }
 
-        return false;
+        action(package);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException e)
+        {
+            // The package was deleted concurrently (e.g. by a retention cleanup) after it was loaded.
+            Detach(package, e);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Stops tracking a package whose save failed so that the failed change
+    /// is not retried by later <see cref="IContext.SaveChangesAsync"/> calls on the same context.
+    /// </summary>
+    private void Detach(Package package, DbUpdateConcurrencyException exception)
+    {
+        foreach (var entry in exception.Entries)
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        var packageEntry = _context.Packages.Entry(package);
+        var context = packageEntry.Context;
+
+        foreach (var dependency in package.Dependencies ?? [])
+        {
+            context.Entry(dependency).State = EntityState.Detached;
+        }
+
+        foreach (var targetFramework in package.TargetFrameworks ?? [])
+        {
+            context.Entry(targetFramework).State = EntityState.Detached;
+        }
+
+        packageEntry.State = EntityState.Detached;
     }
 }

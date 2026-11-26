@@ -54,7 +54,7 @@ public class DefaultPackageContentService : IPackageContentService
         }
 
         await _packages.AddDownloadAsync(id, version, cancellationToken);
-        return await _storage.GetPackageStreamAsync(id, version, cancellationToken);
+        return await OpenOrNullAsync(() => _storage.GetPackageStreamAsync(id, version, cancellationToken));
     }
 
     public async Task<Stream> GetPackageManifestStreamOrNullAsync(string id, NuGetVersion version, CancellationToken cancellationToken = default)
@@ -64,7 +64,7 @@ public class DefaultPackageContentService : IPackageContentService
             return null;
         }
 
-        return await _storage.GetNuspecStreamAsync(id, version, cancellationToken);
+        return await OpenOrNullAsync(() => _storage.GetNuspecStreamAsync(id, version, cancellationToken));
     }
 
     public async Task<Stream> GetPackageReadmeStreamOrNullAsync(string id, NuGetVersion version, CancellationToken cancellationToken = default)
@@ -75,7 +75,7 @@ public class DefaultPackageContentService : IPackageContentService
             return null;
         }
 
-        return await _storage.GetReadmeStreamAsync(id, version, cancellationToken);
+        return await OpenOrNullAsync(() => _storage.GetReadmeStreamAsync(id, version, cancellationToken));
     }
 
     public async Task<Stream> GetPackageIconStreamOrNullAsync(string id, NuGetVersion version, CancellationToken cancellationToken = default)
@@ -86,6 +86,22 @@ public class DefaultPackageContentService : IPackageContentService
             return null;
         }
 
-        return await _storage.GetIconStreamAsync(id, version, cancellationToken);
+        return await OpenOrNullAsync(() => _storage.GetIconStreamAsync(id, version, cancellationToken));
+    }
+
+    /// <summary>
+    /// Opens a stored file, or returns <c>null</c> if it no longer exists. The file may have been removed
+    /// between the database lookup and opening it, e.g. by a concurrent retention cleanup.
+    /// </summary>
+    private static async Task<Stream> OpenOrNullAsync(Func<Task<Stream>> open)
+    {
+        try
+        {
+            return await open();
+        }
+        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
     }
 }
